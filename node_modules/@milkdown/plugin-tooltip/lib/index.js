@@ -1,0 +1,171 @@
+import { computePosition, flip, offset, shift, autoUpdate } from "@floating-ui/dom";
+import { posToDOMRect } from "@milkdown/prose";
+import { TextSelection, Plugin, PluginKey } from "@milkdown/prose/state";
+import { throttle } from "lodash-es";
+import { $ctx, $prose } from "@milkdown/utils";
+class TooltipProvider {
+  constructor(options) {
+    this.#initialized = false;
+    this.onShow = () => {
+    };
+    this.onHide = () => {
+    };
+    this.#updatePosition = (reference) => {
+      computePosition(reference, this.element, {
+        placement: this.#floatingUIOptions.placement ?? "top",
+        middleware: [
+          flip(),
+          offset(this.#offset),
+          shift(this.#shift),
+          ...this.#middleware
+        ],
+        ...this.#floatingUIOptions
+      }).then(({ x, y }) => {
+        Object.assign(this.element.style, {
+          left: `${x}px`,
+          top: `${y}px`
+        });
+      }).catch(console.error);
+    };
+    this.#shouldAutoUpdate = (editorView) => {
+      return this.#root !== editorView.dom.parentElement;
+    };
+    this.#onUpdate = (view, prevState) => {
+      const { state, composing } = view;
+      const { selection, doc } = state;
+      const { ranges } = selection;
+      const from = Math.min(...ranges.map((range) => range.$from.pos));
+      const to = Math.max(...ranges.map((range) => range.$to.pos));
+      const isSame = prevState && prevState.doc.eq(doc) && prevState.selection.eq(selection);
+      if (!this.#initialized) {
+        const root = this.#root ?? view.dom.parentElement ?? document.body;
+        root.appendChild(this.element);
+        this.#initialized = true;
+      }
+      if (composing || isSame) return;
+      this.#cleanupAutoUpdate?.();
+      this.#cleanupAutoUpdate = void 0;
+      if (!this.#shouldShow(view, prevState)) {
+        this.hide();
+        return;
+      }
+      const virtualEl = {
+        getBoundingClientRect: () => posToDOMRect(view, from, to),
+        contextElement: view.dom
+      };
+      if (this.#shouldAutoUpdate(view)) {
+        this.#cleanupAutoUpdate = autoUpdate(
+          virtualEl,
+          this.element,
+          () => this.#updatePosition(virtualEl)
+        );
+      } else {
+        this.#updatePosition(virtualEl);
+      }
+      this.show();
+    };
+    this.update = (view, prevState) => {
+      this.#updater(view, prevState);
+    };
+    this.destroy = () => {
+      this.#cleanupAutoUpdate?.();
+      this.#updater.cancel();
+    };
+    this.show = (virtualElement, editorView) => {
+      this.element.dataset.show = "true";
+      if (virtualElement) {
+        this.#cleanupAutoUpdate?.();
+        this.#cleanupAutoUpdate = void 0;
+        const reference = { ...virtualElement, contextElement: editorView?.dom };
+        if (editorView && this.#shouldAutoUpdate(editorView)) {
+          this.#cleanupAutoUpdate = autoUpdate(
+            reference,
+            this.element,
+            () => this.#updatePosition(reference)
+          );
+        } else {
+          this.#updatePosition(reference);
+        }
+      }
+      this.onShow();
+    };
+    this.hide = () => {
+      if (this.element.dataset.show === "false") return;
+      this.element.dataset.show = "false";
+      this.onHide();
+    };
+    this.element = options.content;
+    this.#debounce = options.debounce ?? 200;
+    this.#shouldShow = options.shouldShow ?? this.#_shouldShow;
+    this.#offset = options.offset;
+    this.#shift = options.shift;
+    this.#middleware = options.middleware ?? [];
+    this.#floatingUIOptions = options.floatingUIOptions ?? {};
+    this.#root = options.root;
+    this.element.dataset.show = "false";
+    this.#updater = throttle(this.#onUpdate, this.#debounce);
+  }
+  /// @internal
+  #debounce;
+  /// @internal
+  #shouldShow;
+  /// @internal
+  #middleware;
+  /// @internal
+  #floatingUIOptions;
+  /// @internal
+  #root;
+  #initialized;
+  /// @internal
+  #cleanupAutoUpdate;
+  /// @internal
+  #offset;
+  /// @internal
+  #shift;
+  /// @internal
+  #updater;
+  #updatePosition;
+  #shouldAutoUpdate;
+  #onUpdate;
+  /// @internal
+  #_shouldShow(view) {
+    const { doc, selection } = view.state;
+    const { empty, from, to } = selection;
+    const isEmptyTextBlock = !doc.textBetween(from, to).length && view.state.selection instanceof TextSelection;
+    const isTooltipChildren = this.element.contains(document.activeElement);
+    const notHasFocus = !view.hasFocus() && !isTooltipChildren;
+    const isReadonly = !view.editable;
+    if (notHasFocus || empty || isEmptyTextBlock || isReadonly) return false;
+    return true;
+  }
+}
+function tooltipFactory(id) {
+  const tooltipSpec = $ctx(
+    {},
+    `${id}_TOOLTIP_SPEC`
+  );
+  const tooltipPlugin = $prose((ctx) => {
+    const spec = ctx.get(tooltipSpec.key);
+    return new Plugin({
+      key: new PluginKey(`${id}_TOOLTIP`),
+      ...spec
+    });
+  });
+  const result = [tooltipSpec, tooltipPlugin];
+  result.key = tooltipSpec.key;
+  result.pluginKey = tooltipPlugin.key;
+  tooltipSpec.meta = {
+    package: "@milkdown/plugin-tooltip",
+    displayName: `Ctx<tooltipSpec>|${id}`
+  };
+  tooltipPlugin.meta = {
+    package: "@milkdown/plugin-tooltip",
+    displayName: `Prose<tooltip>|${id}`
+  };
+  return result;
+}
+export {
+  TooltipProvider,
+  tooltipFactory
+};
+//# sourceMappingURL=index.js.map

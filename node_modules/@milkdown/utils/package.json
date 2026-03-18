@@ -1,0 +1,35 @@
+{
+  "name": "@milkdown/utils",
+  "type": "module",
+  "version": "7.19.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Milkdown/milkdown.git",
+    "directory": "packages/utils"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "types": "./lib/index.d.ts"
+    }
+  },
+  "main": "./lib/index.js",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "nanoid": "^5.0.9",
+    "@milkdown/core": "7.19.0",
+    "@milkdown/ctx": "7.19.0",
+    "@milkdown/prose": "7.19.0",
+    "@milkdown/exception": "7.19.0",
+    "@milkdown/transformer": "7.19.0"
+  },
+  "scripts": {
+    "build": "vite build"
+  },
+  "types": "./lib/index.d.ts"
+}
